@@ -1,0 +1,38 @@
+trainer: nerv_enc_trainer_full_res
+
+test_dataset:
+  name: vidrec_dataset_patch_tubelet_inference_lazy
+  args: {root_path: data/dataset_meta, frame_num: $frame_num$, 
+    cls_vid_num: '-1_-1', crop_size: $input_size$, tubelet_size: $tubelet_size$}
+  csv_paths: {sub400_k400_2023: sub400_k400_2023_val.csv}
+  frames: {input: $eval_frames$, output: 'none'}
+  loader:
+    batch_size: $batch_size$
+    num_workers: $num_workers$
+
+eval_full_res_dataset:
+  name: vidrec_dataset_full_res_patches_single_video
+  args: {frame_num: $frame_num$, crop_size: $input_size$, tubelet_size: $tubelet_size$}
+  frames: {input: $eval_frames$, output: 'none'}
+  loader:
+    batch_size: $batch_size$
+    num_workers: $num_workers$
+
+dump_ckt: 'no'
+dump_pred: 'no'
+dump_video: 'no'
+
+generate_from_single_frame: false
+
+eval_residuals: true
+viz_full_res: false
+
+eval_model: checkpoints/patch_tubelet/320x160_finetuned_patch/epoch-last.pth
+eval_metrics_path: checkpoints/patch_tubelet/320x160_finetuned_patch
+eval_same_model: true
+eval_saver: null
+quant_bit: 8
+encoding_type: arithmetic
+quant_axis: 0
+eval_csv_prefix: ''
+eval_log_per_video: false

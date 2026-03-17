@@ -1,0 +1,49 @@
+trainer: nerv_enc_trainer_full_res
+
+train_dataset:
+  name: vidrec_dataset_patch_tubelet_sampler_lazy
+  args: {root_path: data/dataset_meta, split: train, frame_num: $frame_num$, rand_augment: 'no', csv_file: $csv_file$,
+    cls_vid_num: '-1_-1', crop_size: $input_size$, tubelet_size: $tubelet_size$, scale: 1, aspect_ratio: 1, rand_flip: 'no',
+    clips_per_video: 1, tubelets_per_clip: 1}
+  loader:
+    batch_size: $batch_size$
+    num_workers: $num_workers$
+
+test_dataset:
+  name: vidrec_dataset_patch_tubelet_inference_lazy_uvg
+  args: {root_path: data/dataset_meta, frame_num: $frame_num$, 
+    cls_vid_num: '-1_-1', crop_size: $input_size$, tubelet_size: $tubelet_size$} # [480,640] [160,160]
+  csv_paths: { uvg: uvg_hd.csv, } # ucf_sub: 'sub101_1_ucf101_val.csv'
+  frames: {input: $eval_frames$, output: 'none'}
+  loader:
+    batch_size: $batch_size$
+    num_workers: $num_workers$
+
+model:
+  name: nerv_enc_full_res
+  args:
+    tokenizer:
+      name: vidrec_tokenizer
+      args: {input_size: $tubelet_size$, patch_size: 32, padding: 0, frame_num: $frame_num$, eval_frames: $eval_frames$, img_groups: 1}
+    hyponet:
+      name: hypo_convnets_full_res
+      args: {in_dim: 1, out_dim: 3, out_bias: 'tanh', strds_h: '5_4_4_2', strds_w: '5_4_4_2', 
+        ks: '1_3', hid_dim: 16, size: 'none', act: 'gelu', use_pe: true, pe_dim: 16,}
+    n_tokens: '4_128_64_0'
+    token_dims: '256_144_72_0'
+    transformer_encoder:
+      name: transformer_encoder
+      args: {dim: 720, depth: 6, n_head: 12, head_dim: 64, ff_dim: 2880}
+
+optimizer:
+  name: adam
+  args: {lr: 1.e-4, weight_decay: 0.0}
+  lr_type: step
+
+max_epoch: 150
+eval_epoch: 50
+vis_epoch: 200
+dump_ckt: 'no'
+dump_pred: 'no'
+dump_video: 'no'
+generate_from_single_frame: false

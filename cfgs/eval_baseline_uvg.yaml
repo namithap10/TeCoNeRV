@@ -1,0 +1,35 @@
+trainer: nerv_enc_trainer
+
+test_dataset:
+  name: vidrec_dataset_clip_inference_lazy_uvg
+  args: {root_path: data/dataset_meta, frame_num: $frame_num$, 
+    cls_vid_num: '-1_-1', crop_size: $input_size$}
+  csv_paths: {uvg: uvg_hd.csv}
+  frames: {input: $eval_frames$, output: 'none'}
+  loader:
+    batch_size: $batch_size$
+    num_workers: $num_workers$
+
+eval_residuals_dataset:
+  name: vidrec_dataset_single_video_clips_uvg
+  args: {frame_num: $frame_num$, crop_size: $input_size$}
+  frames: {input: $eval_frames$, output: 'none'}
+  loader:
+    batch_size: $batch_size$
+    num_workers: $num_workers$
+
+dump_ckt: 'no'
+dump_pred: 'no'
+dump_video: 'no'
+
+generate_from_single_frame: false
+
+eval_residuals: true
+
+eval_model: checkpoints/nervenc/480p_finetuned_baseline/epoch-last.pth
+eval_metrics_path: checkpoints/nervenc/480p_finetuned_baseline
+eval_same_model: true
+quant_bit: 8
+encoding_type: arithmetic
+eval_csv_prefix: ''
+quant_axis: 0

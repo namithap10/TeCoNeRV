@@ -1,0 +1,41 @@
+trainer: nerv_enc_trainer_weight_saver
+
+test_dataset:
+  name: vidrec_dataset_clip_inference_lazy_uvg
+  args: {root_path: data/dataset_meta, frame_num: $frame_num$, 
+    cls_vid_num: '-1_-1', crop_size: $input_size$}
+  csv_paths: {uvg_hd: uvg_hd.csv}
+  frames: {input: $eval_frames$, output: 'none'}
+  loader:
+    batch_size: $batch_size$
+    num_workers: $num_workers$
+
+eval_residuals_dataset:
+  name: vidrec_dataset_single_video_clips_uvg
+  args: {frame_num: $frame_num$, crop_size: $input_size$}
+  frames: {input: $eval_frames$, output: 'none'}
+  loader:
+    batch_size: $batch_size$
+    num_workers: $num_workers$
+
+dump_ckt: 'no'
+dump_pred: 'no'
+dump_video: 'no'
+
+generate_from_single_frame: false
+
+eval_residuals: false
+
+eval_model: checkpoints/nervenc/480p_finetuned_baseline/epoch-last.pth
+save_path: save/baseline_preds/baseline_preds_uvg_480p
+eval_same_model: false
+eval_saver: null
+quant_bit: none
+encoding_type: none
+eval_weights_residuals: false
+eval_csv_prefix: ''
+
+save_weights_no_quant: no
+save_weights_quant: no
+residuals_type: direct # direct weights for baseline, from_prev residuals for Patch-Tubelet and TeCoNeRV
+target_vid: jockey

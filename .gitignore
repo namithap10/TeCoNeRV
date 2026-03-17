@@ -1,0 +1,33 @@
+.DS_Store
+
+# Python
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Environments
+.env
+.venv
+env/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs and outputs
+*.log
+output/
+wandb/
+
+# Data / checkpoints (large files)
+*.pth
+*.pt
