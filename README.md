@@ -1,4 +1,5 @@
-# TeCoNeRV: Leveraging Temporal Coherence for Compressible Neural Representations for Videos
+<div align="center">
+<h1>TeCoNeRV: Leveraging Temporal Coherence for Compressible Neural Representations for Videos</h1>
 
 **[Namitha Padmanabhan](https://namithap10.github.io/)** · **[Matthew Gwilliam](https://mgwillia.github.io/)** · **[Abhinav Shrivastava](http://www.cs.umd.edu/~abhinav/)**
 
@@ -11,9 +12,10 @@ University of Maryland, College Park
 This repository contains the official implementation for the paper "TeCoNeRV: Leveraging Temporal Coherence for Compressible Neural Representations for Videos". TeCoNeRV uses hypernetworks to predict implicit neural representation (INR) weights for video compression. A patch-tubelet decomposition enables hypernetworks to scale to high-resolution video prediction and additionally supports resolution-independent training. A temporal coherence objective encourages clip representations to vary smoothly with video content, enabling compact residual-based encoding of per-clip parameters.
 
 <p align="center">
-  <img src="assets/images/teaser.png" alt="TeCoNeRV Teaser" style="max-width:90%;">
+  <img src="assets/images/teaser.png" alt="TeCoNeRV Teaser" style="width:50%;">
 </p>
 
+</div>
 
 ## Getting started
 
