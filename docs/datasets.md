@@ -32,18 +32,18 @@ data/
 
 ## Datasets for training and evaluation
 
-Kinetics-400 is used for training and for evaluation on a small validation subset. UVG, HEVC, and MCL-JCV are the additional evaluation datasets. The directory layout above matches the released metadata files directly.
+Kinetics-400 is used for training and for evaluation on a small validation subset. UVG, HEVC, and MCL-JCV are the primary evaluation datasets. The directory layout above matches the released dataset metadata files directly.
 
 ## Kinetics-400
 
-Training metadata:
+Training:
 
-- `k400_2023_train_cls400_50_720p.js` — 400-class Kinetics-400 training subset at original 720p resolution
-- `k400_2023_train_cls400_50_480p.js` — 400-class Kinetics-400 training subset, preprocessed to 640x480
+- `k400_2023_train_cls400_50_720p.js` - 400-class Kinetics training subset with videos at original 720p resolution
+- `k400_2023_train_cls400_50_480p.js` - 400-class Kinetics training subset, preprocessed to 480p
 
-Evaluation metadata:
+Evaluation:
 
-- `sub400_k400_2023_val.csv` — one validation clip per class, read from `data/kinetics_720p/val/`
+- `sub400_k400_2023_val.csv` - one validation clip per class, read from `data/kinetics_720p/val/`
 
 Directory layout:
 
@@ -53,7 +53,7 @@ Directory layout:
 
 The 720p training metadata points to videos already available at 1280x720 in the downloaded source. The 480p training metadata points to videos resized from the downloaded source, as described below.
 
-Source: https://github.com/cvdfoundation/kinetics-dataset
+Source: [https://github.com/cvdfoundation/kinetics-dataset](https://github.com/cvdfoundation/kinetics-dataset)
 
 ### Generating the 480p split
 
@@ -69,7 +69,7 @@ python scripts/resize_kinetics_480p.py \
   --workers 8
 ```
 
-## Additional evaluation datasets
+## Evaluation datasets
 
 ### UVG
 
@@ -83,11 +83,11 @@ The repository expects the seven standard UVG sequences as RGB PNG frame directo
 - `yachtride_1080`
 - `readysteadygo_1080`
 
-Sequence names and target paths are defined in `data/dataset_meta/uvg_hd.csv`. Frames must be named `f00xxx.png` starting from `f00001.png`. All sequences are 1920x1080 derived from the 2.5/5-second raw YUV source at 120 fps; `ShakeNDry` has 300 frames and the remaining six have 600 frames each.
+Sequence names and target paths are defined in `data/dataset_meta/uvg_hd.csv`. Frames must be named `f00xxx.png` starting from `f00001.png`. All sequences are 1920x1080 derived from the 2.5- or 5-second raw YUV source at 120 fps. `ShakeNDry` comprises 300 frames and the remaining six sequences have 600 frames each.
 
 If starting from the raw YUV files rather than pre-extracted frames, convert each sequence to PNG and place the frames in the directory structure above.
 
-Source: https://ultravideo.fi/dataset.html
+Source: [https://ultravideo.fi/dataset.html](https://ultravideo.fi/dataset.html)
 
 ### HEVC
 
@@ -109,7 +109,7 @@ Raw YUV filenames follow the form `<SequenceName>_<width>x<height>_<frame_count>
 - `BasketballDrill_832x480_500.yuv`
 - `FourPeople_1280x720_600.yuv`
 
-These are the standard HEVC common test sequences from the JCT-VC common test conditions, used in ITU-T H.265 evaluation. Download the YUV files, place them in a single directory, and extract frames with:
+These are the standard HEVC common test sequences from the JCT-VC common test conditions, used in ITU-T H.265/HEVC evaluation. Download the YUV files, place them in a single directory, and extract frames with:
 
 ```bash
 python scripts/extract_yuv_frames.py \
@@ -122,12 +122,12 @@ The extraction script verifies the number of extracted PNG files against the fra
 
 ### MCL-JCV
 
-Download the 1080p source YUV videos and extract the 24 sequences listed in `data/dataset_meta/mcl_jcv_24_1080p.csv`. Only 24 of the 30 source videos are used due to intellectual-property restrictions on the remainder, as noted in the official MCL website.
+Download the 1080p source YUV videos and extract the 24 sequences listed in `data/dataset_meta/mcl_jcv_24_1080p.csv`. Only 24 of the 30 source videos are used due to intellectual-property restrictions, as noted in the official MCL website.
 
 Sources:
 
-- Official dataset page: https://mcl.usc.edu/mcl-jcv-dataset/
-- Hugging Face mirror: https://huggingface.co/datasets/uscmcl/MCL-JCV_Dataset
+- Official dataset page: [https://mcl.usc.edu/mcl-jcv-dataset/](https://mcl.usc.edu/mcl-jcv-dataset/)
+- Hugging Face mirror: [https://huggingface.co/datasets/uscmcl/MCL-JCV_Dataset](https://huggingface.co/datasets/uscmcl/MCL-JCV_Dataset)
 
 Raw YUV filenames follow the form `<SequenceName>_<width>x<height>_<frame_rate>.yuv`, for example:
 

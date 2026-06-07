@@ -1,21 +1,21 @@
-# Evaluation Guide
+# Evaluation
 
 - [Reproducing results from the paper](#reproducing-results-from-the-paper)
 - [Overlapped inference](#overlapped-inference-for-patch-based-models)
-- [Saving weights or residuals](#saving-weights-or-residuals)
+- [Saving hyponet predictions and residuals](#saving-hyponet-predictions-and-residuals)
 - [Visualization](#visualization)
 
-This document covers primary evaluation for all three model families (`nervenc`, `patch_tubelet`, `teconerv`) and overlapped inference for patch-based models along with instructions for saving weight predictions as bitstream to disk and performing visualization.
+This document covers primary evaluation for all three model families (`nervenc`, `patch_tubelet`, `teconerv`) and overlapped inference for patch-based models. We also provide instructions for saving weight predictions as bitstream to disk and performing visualization.
 
 ## Reproducing results from the paper
 
-To reproduce metrics reported in the paper for UVG, HEVC, MCL-JCV, or the Kinetics-400 validation subset, set `eval_residuals: true`. This dispatches to `evaluate_x_dict_residuals_epoch()`, which reconstructs each video in full as an ordered sequence of consecutive `frame_num`-frame clips and evaluates three transmission modes:
+To reproduce metrics reported in the paper for UVG, HEVC, MCL-JCV, or the Kinetics-400 validation subset, set `eval_residuals: true`. This dispatches to `evaluate_x_dict_residuals_epoch()`, which reconstructs each video in full as an ordered sequence of consecutive `frame_num`-frame clips. We evaluate three transmission modes:
 
-- **direct**: transmit the current clip's `x_dict` parameters directly
-- **from_first**: transmit residuals against the reconstructed first clip
-- **from_prev**: transmit residuals against the reconstructed previous clip
+- **direct**: transmit each clip's `x_dict` parameters directly
+- **from_first**: transmit residuals against the first clip
+- **from_prev**: transmit residuals against the previous clip
 
-The direct path corresponds to the unique-parameter bitstream used by the baseline. The `from_first` and `from_prev` paths are the residual encoding schemes proposed in the paper for patch-based models. Bitrate and throughput are estimated by quantizing and entropy coding the `x_dict` tensors in memory; residual bitstreams are not written to disk during metric evaluation. For stored artifacts, see [Saving weights or residuals](#saving-weights-or-residuals).
+The direct mode corresponds to the per-clip unique-parameter bitstream used by the baseline. The `from_first` and `from_prev` modes are the residual encoding schemes proposed in our paper for patch-based models. Bitrate and throughput are estimated by quantizing and entropy coding the `x_dict` tensors. Residual bitstreams are not written to disk during metric evaluation; for storing these artifacts, see [Saving hyponet predictions and residuals](#saving-hyponet-predictions-and-residuals).
 
 The trainer used for residual evaluation depends on the model family:
 
@@ -23,9 +23,9 @@ The trainer used for residual evaluation depends on the model family:
 - patch-tubelet and teconerv: [nerv_enc_trainer_full_res.py](../trainers/nerv_enc_trainer_full_res.py)
 - overlap evaluation: [nerv_enc_trainer_full_res_eval_overlap.py](../trainers/nerv_enc_trainer_full_res_eval_overlap.py)
 
-For the baseline (`nervenc`), the numbers reported in Table 1 correspond to the **direct** transmission path. Residual encoding is our contribution for patch-based models, hence reporting the baseline on its direct path is the fair comparison. Table 3 includes baseline results under both direct and from_prev transmission as an ablation.
+For the baseline (`nervenc`), the numbers reported in Table 1 correspond to the **direct** transmission mode for fair comparison, as residual encoding is our contribution for patch-based models. Table 3 includes baseline results under both direct and from_prev transmission as an ablation.
 
-Results in the main paper (excluding the quantization ablation) are reported at `quant_bit 4` with `encoding_type arithmetic`. Both are passed as `--opts` overrides, as in the reference scripts. A single run can sweep multiple quantization levels by passing an underscore-separated list, e.g. `quant_bit 8_7_6_5_4`, which produces one set of metrics per level. Using a different encoding type (e.g. `huffman`) will produce slightly different bpp estimates.
+Results in the main paper (excluding the quantization ablation) are reported at `quant_bit 4` with `encoding_type arithmetic`. Both are passed as `--opts` overrides, as in the reference scripts. Multiple quantization levels can be evaluated by passing an underscore-separated list, e.g. `quant_bit 8_7_6_5_4`, which produces one set of metrics per level. Using a different lossless encoding type (e.g. `huffman`) will produce slightly different bpp estimates.
 
 Note: The periodic `evaluate_epoch()` loop (which writes `eval_metrics.csv`) used during training is **not** the evaluation protocol reported in the paper. It samples clips from `test_dataset` and is useful as a sanity check during training, but it does not produce the sequential video-by-video metrics reported.
 
@@ -58,16 +58,16 @@ The repository uses two input formats during evaluation:
 
 In both cases, the residual evaluation path operates on ordered per-video datasets and reconstructs all consecutive clips in sequence. At config level:
 
-- `test_dataset` — validation loader used by the standard `evaluate_epoch()` loop
-- `eval_residuals_dataset` — used by baseline residual evaluation
-- `eval_full_res_dataset` — used by full-resolution patch-based residual evaluation
+- `test_dataset` - validation loader used by the standard `evaluate_epoch()` loop
+- `eval_residuals_dataset` - used by baseline residual evaluation
+- `eval_full_res_dataset` - used by full-resolution patch-based residual evaluation
 
 ### `eval_same_model` and `eval_saver`
 
 For `nervenc` and `patch_tubelet`, evaluation uses the checkpoint model definition directly:
 
 - `eval_same_model: true`
-- `eval_saver: null`
+- `eval_saver: null` (no override)
 
 For `teconerv`, the checkpoint was trained with the paired model `nerv_enc_full_res_pairs`, but evaluation runs inference one clip at a time using `nerv_enc_full_res`. The TeCoNeRV evaluation scripts therefore set:
 
@@ -78,12 +78,12 @@ This override is required whenever evaluating TeCoNeRV checkpoints, including on
 
 ### Inference resolution
 
-The target inference resolution is set by `--input_size`. Videos are resized on the shorter side and center-cropped to `input_size` using the transforms in [vidrec_dataset.py](../datasets/vidrec_dataset.py), with antialiasing applied during resize.
+The target inference resolution is set by `--input_size`. Videos are resized on the shorter side and center-cropped to `input_size` using the transforms in [vidrec_dataset.py](../datasets/vidrec_dataset.py), with antialiasing during resize.
 
 For patch-based models:
 
-- `input_size` — full reconstruction resolution
-- `tubelet_size` — patch size used for tiling the full frame
+- `input_size` - full reconstruction resolution
+- `tubelet_size` - patch size used for tiling the full frame
 
 ### Throughput and timing
 
@@ -121,15 +121,15 @@ The overlap grid is constructed in [vidrec_dataset_patches.py](../datasets/vidre
 
 Overlap-specific options:
 
-- `overlap_h`, `overlap_w` — overlap in pixels along each spatial dimension
-- `blend_overlap` — reconstruction mode for overlapping regions:
+- `overlap_h`, `overlap_w` - overlap in pixels along each spatial dimension
+- `blend_overlap` - reconstruction mode for overlapping regions:
   - `false`: each output pixel is assigned to exactly one patch by cropping the overlap region
   - `true`: overlap regions are blended with spatial weights; this results in lower decoding speed
-- `chunk_pred_batch_size` — number of patch-tubelets processed together; reduce to lower peak memory at some throughput cost
+- `chunk_pred_batch_size` - number of patch-tubelets processed together; reduce to lower GPU memory usage at some throughput cost
 
 The released overlap script uses `input_size 720x1280`, `tubelet_size 160x320`, `overlap_h 20`, `overlap_w 20`, and `blend_overlap false`.
 
-## Saving Weights or Residuals
+## Saving Hyponet Predictions and Residuals
 
 To store hyponet weight predictions to disk rather than only compute metrics, use the weight-saver trainers:
 
@@ -137,7 +137,7 @@ To store hyponet weight predictions to disk rather than only compute metrics, us
 - [nerv_enc_trainer_full_res_weight_saver.py](../trainers/nerv_enc_trainer_full_res_weight_saver.py) — patch-based models
 - [nerv_enc_trainer_full_res_weight_saver_overlap.py](../trainers/nerv_enc_trainer_full_res_weight_saver_overlap.py) — patch-based models with overlap
 
-These support saving direct parameters for the baseline and `from_prev` residuals for patch-based models, and optional quantization. Lossless entropy coding is not implemented and can be added if needed. Reconstructions for visualization use 8-bit quantization by default.
+These support saving direct parameters for the baseline and `from_prev` residuals for patch-based models, and optionally, storage after lossy quantization. Lossless entropy coding is not implemented and can be added if needed. Reconstructions for visualization use 8-bit quantization by default.
 
 Reference scripts:
 
@@ -166,13 +166,13 @@ Saved weight or residual dumps can be reconstructed into RGB frames for qualitat
 
 - [scripts/visualize/reconstruct_from_saved_weights.py](../scripts/visualize/reconstruct_from_saved_weights.py)
 
-This script reconstructs clips from the outputs written by the weight-saver trainers described in [Saving weights or residuals](#saving-weights-or-residuals). Reconstruction mode is set via `--mode`:
+This script reconstructs clips from the outputs written by the weight-saver trainers described in [Saving hyponet predictions and residuals](#saving-hyponet-predictions-and-residuals). Reconstruction mode is set via `--mode`:
 
-- `baseline` — direct clip-wise reconstruction from baseline dumps under `direct/<video>/`
-- `patch` — non-overlap patch-based reconstruction from `from_prev/<video>/tubelet_*/`
-- `patch_overlap` — overlap-aware reconstruction from `from_prev/<video>/tubelet_*/`, with either crop- or blend-based stitching
+- `baseline` - direct clip-wise reconstruction from baseline dumps under `direct/<video>/`
+- `patch` - non-overlap patch-based reconstruction from `from_prev/<video>/tubelet_*/`
+- `patch_overlap` - overlap-aware reconstruction from `from_prev/<video>/tubelet_*/`, with either crop- or blend-based stitching
 
-The script writes one output folder per reconstructed clip under `out_dir`. Use `--all_clips` to reconstruct the full video, or omit it to sample 4 clips by default. Add `--save_mp4` to additionally write a stitched MP4 of the reconstructed clips, adjusting the FPS as needed.
+The script writes one output folder per reconstructed clip under `out_dir`. Use `--all_clips` to reconstruct the full video, or omit it to sample 4 clips by default. Add `--save_mp4` to additionally write a stitched MP4 of the reconstructed clips, adjusting the FPS as required.
 
 ### Examples
 
@@ -218,4 +218,3 @@ python scripts/visualize/reconstruct_from_saved_weights.py \
 
 - `--pred_dir` should point to the root directory produced by the corresponding weight-saver run; it must contain `base_params.pth` and the dumped `direct/` or `from_prev/` subdirectories.
 - The overlap mode reads `overlap_h` and `overlap_w` from the saved per-tubelet `metadata.json`. `--blend_overlap false` reproduces crop-based stitching; `--blend_overlap true` enables weighted blending.
-
