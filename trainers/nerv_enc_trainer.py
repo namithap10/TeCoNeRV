@@ -518,8 +518,9 @@ class NeRVEncTrainer(BaseTrainer):
         Returns:
             dict_recon: Reconstructed dictionary
             total_bits: Dictionary containing quant, overhead, and encoded bits
-            time_encode: Time spent on quantization + entropy encoding for this patch
-            time_decode: Time spent on entropy decoding + dequantization for this patch
+            time_encode: Time spent on quantization + entropy encoding
+            time_decode: Time spent on entropy decoding + dequantization
+            t_dequant: Time spent on dequantization only
         """
         if encoding_type is not None and quant_bit >= 32:
             raise ValueError("Encoding is not supported without quantization")
@@ -589,10 +590,10 @@ class NeRVEncTrainer(BaseTrainer):
             dict_recon = decoded_dict_for_dequant
         t_dequant = time.time() - start_dequant
 
-        time_encode_patch = t_quant + t_encode
-        time_decode_patch = t_decode + t_dequant
+        time_encode = t_quant + t_encode
+        time_decode = t_decode + t_dequant
 
-        return dict_recon, total_bits, time_encode_patch, time_decode_patch
+        return dict_recon, total_bits, time_encode, time_decode, t_dequant
     
     
     def compute_param_dict_residuals(self, x_dict_current, x_dict_base):
@@ -613,6 +614,7 @@ class NeRVEncTrainer(BaseTrainer):
             encoded_bits: Bits used for the *encoded residual*
             time_encode: Time for residual calc + quant + entropy encoding
             time_decode: Time for entropy decoding + dequant + adding base
+            t_dequant_add: Time spent on dequantization + adding base only
         """
         if encoding_type is not None and quant_bit >= 32:
             raise ValueError("Encoding is not supported without quantization")
@@ -694,10 +696,10 @@ class NeRVEncTrainer(BaseTrainer):
 
         t_dequant_add = time.time() - start_dequant_add
 
-        time_encode_patch = t_residual_calc + t_quant + t_encode
-        time_decode_patch = t_decode + t_dequant_add
+        time_encode = t_residual_calc + t_quant + t_encode
+        time_decode = t_decode + t_dequant_add
 
-        return dict_recon, encoded_bits, time_encode_patch, time_decode_patch
+        return dict_recon, encoded_bits, time_encode, time_decode, t_dequant_add
     
     def _log_metrics(self, recon_type, dataset_name, csv_path, csv_path_per_video, metrics_per_video, clip_metrics_across_videos, 
                              ordered_dataset, videos, encoding_type, quant_bit, quant_axis, log_per_video=True):
@@ -885,6 +887,8 @@ class NeRVEncTrainer(BaseTrainer):
             ordered_loader = self._make_data_loader(
                 ordered_dataset, batch_size=loader.batch_size, num_workers=loader.num_workers
             )
+            total_clips = len(ordered_dataset)
+            clip_counter = 0
 
             # State maintained per video
             first_x_dict_recon = None # Store the reconstructed first frame
@@ -915,10 +919,11 @@ class NeRVEncTrainer(BaseTrainer):
 
                 # Process each clip in the batch
                 for i in range(batch_size):
+                    has_future_clip = clip_counter < (total_clips - 1)
                     cur_x_dict = {k: v[i:i+1] if v is not None else None for k, v in x_dict.items()}
 
                     # Direct Processing
-                    x_dict_recon_direct, cur_bits_direct, time_encode_direct, time_decode_direct = self._process_direct(
+                    x_dict_recon_direct, cur_bits_direct, time_encode_direct, time_decode_direct, time_dequant_direct = self._process_direct(
                         cur_x_dict, quant_bit, quant_axis, encoding_type)
                     x_dict_recon_batches['direct'].append(x_dict_recon_direct)
                     video_metrics['direct']['bits_encoded'].append(cur_bits_direct['encoded'])
@@ -952,6 +957,9 @@ class NeRVEncTrainer(BaseTrainer):
                         batch_t_compress['decode']['from_first'] += time_decode_direct
                         batch_t_compress['encode']['from_prev'] += time_encode_direct
                         batch_t_compress['decode']['from_prev'] += time_decode_direct
+                        if has_future_clip:
+                            batch_t_compress['encode']['from_first'] += time_dequant_direct
+                            batch_t_compress['encode']['from_prev'] += time_dequant_direct
 
                     else:
                         # Subsequent clips for this video
@@ -959,7 +967,7 @@ class NeRVEncTrainer(BaseTrainer):
                                 raise RuntimeError("Residual processing attempted before first frame state was set.")
 
                         # 'from_first' uses raw current vs reconstructed first
-                        x_dict_recon_first, enc_bits_first, t_enc_p_first, t_dec_p_first = self._process_residual(
+                        x_dict_recon_first, enc_bits_first, t_enc_p_first, t_dec_p_first, _ = self._process_residual(
                             cur_x_dict, first_x_dict_recon, quant_bit, quant_axis, encoding_type)
                         x_dict_recon_batches['from_first'].append(x_dict_recon_first)
                         video_metrics['from_first']['bits_encoded'].append(enc_bits_first)
@@ -968,16 +976,18 @@ class NeRVEncTrainer(BaseTrainer):
                         batch_t_compress['decode']['from_first'] += t_dec_p_first
 
                         # 'from_prev' uses raw current vs reconstructed previous
-                        x_dict_recon_prev, enc_bits_prev, t_enc_p_prev, t_dec_p_prev = self._process_residual(
+                        x_dict_recon_prev, enc_bits_prev, t_enc_p_prev, t_dec_p_prev, t_dequant_add_prev = self._process_residual(
                             cur_x_dict, prev_x_dict_recon, quant_bit, quant_axis, encoding_type)
                         x_dict_recon_batches['from_prev'].append(x_dict_recon_prev)
                         video_metrics['from_prev']['bits_encoded'].append(enc_bits_prev)
                         overall_metrics['from_prev']['bits_encoded'].append(enc_bits_prev)
                         batch_t_compress['encode']['from_prev'] += t_enc_p_prev
                         batch_t_compress['decode']['from_prev'] += t_dec_p_prev
-
+                        if has_future_clip:
+                            batch_t_compress['encode']['from_prev'] += t_dequant_add_prev
                         # Update prev_x_dict_recon for the next clip in the sequence
                         prev_x_dict_recon = self._clone_dict(x_dict_recon_prev)
+                    clip_counter += 1
 
                 # Update reconstruction metrics & final decode time for the batch
                 num_frames_in_batch = batch_size * ordered_dataset.frame_num

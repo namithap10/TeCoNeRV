@@ -458,8 +458,9 @@ class NeRVEncTrainerFullRes(BaseTrainer):
         Returns:
             dict_recon: Reconstructed dictionary
             total_bits: Dictionary containing quant, overhead, and encoded bits
-            time_encode: Time spent on quantization + entropy encoding for this patch
-            time_decode: Time spent on entropy decoding + dequantization for this patch
+            time_encode_patch: Time spent on quantization + entropy encoding for this patch
+            time_decode_patch: Time spent on entropy decoding + dequantization for this patch
+            t_dequant: Time spent on dequantization only for this patch
         """
         if encoding_type is not None and quant_bit >= 32:
             raise ValueError("Encoding is not supported without quantization")
@@ -542,7 +543,7 @@ class NeRVEncTrainerFullRes(BaseTrainer):
         time_encode_patch = t_quant + t_encode
         time_decode_patch = t_decode + t_dequant
 
-        return dict_recon, total_bits, time_encode_patch, time_decode_patch
+        return dict_recon, total_bits, time_encode_patch, time_decode_patch, t_dequant
 
     def compute_param_dict_residuals(self, x_dict_current, x_dict_base):
         """Compute residuals between two param dicts layer-wise"""
@@ -559,8 +560,9 @@ class NeRVEncTrainerFullRes(BaseTrainer):
         Returns:
             dict_recon: Reconstructed dictionary using residuals
             encoded_bits: Bits used for the *encoded residual*
-            time_encode: Time for residual calc + quant + entropy encoding
-            time_decode: Time for entropy decoding + dequant + adding base
+            time_encode_patch: Time for residual calc + quant + entropy encoding
+            time_decode_patch: Time for entropy decoding + dequant + adding base
+            t_dequant_add: Time spent on dequantization + adding base only
         """
         if encoding_type is not None and quant_bit >= 32:
             raise ValueError("Encoding is not supported without quantization")
@@ -651,7 +653,7 @@ class NeRVEncTrainerFullRes(BaseTrainer):
         time_encode_patch = t_residual_calc + t_quant + t_encode
         time_decode_patch = t_decode + t_dequant_add
 
-        return dict_recon, encoded_bits, time_encode_patch, time_decode_patch
+        return dict_recon, encoded_bits, time_encode_patch, time_decode_patch, t_dequant_add
 
     def _log_full_res_metrics(self, recon_type, dataset_name, csv_path, csv_path_per_video, metrics_per_video, clip_metrics_across_videos,
                               ordered_dataset, videos, encoding_type, quant_bit, quant_axis, log_per_video=True):
@@ -1030,17 +1032,22 @@ class NeRVEncTrainerFullRes(BaseTrainer):
             # Reset video metrics for each video
             video_metrics = defaultdict(list)
 
-            for data in ordered_loader:
+            total_clips = len(ordered_dataset)
+            for clip_idx, data in enumerate(ordered_loader):
                 # Remove batch dimension since we process one clip at a time
                 data = {k: v[0].cuda() if isinstance(v, torch.Tensor) else v
                         for k, v in data.items()}  # unbatchify inp, gt tensors
-                start_time = time.time()
+                        
                 patches = data['patches']
                 # len = num_patches in frame.
                 positions = data['patch_positions']
                 start_frame = data['start_frame']  # single value
 
                 clip_metrics = self._init_clip_metrics()
+
+                # For each clip, we must account for the additional time to dequantize the first or
+                # previous clip's stored x_dict as we simulate the closed-loop encoding/decoding process.
+                has_future_clip = clip_idx < (total_clips - 1)
 
                 # Process patches for all frames in clip together
                 start_common_encode = time.time()
@@ -1084,7 +1091,7 @@ class NeRVEncTrainerFullRes(BaseTrainer):
                     }
 
                     # Direct processing
-                    x_dict_recon_direct, bits_direct, t_enc_direct, t_dec_direct = self._process_direct(
+                    x_dict_recon_direct, bits_direct, t_enc_direct, t_dec_direct, t_dequant_direct = self._process_direct(
                         cur_x_dict, quant_bit, quant_axis, encoding_type)
                     x_dict_recon_patches['direct'].append(x_dict_recon_direct)
                     # Store bits for this specific patch
@@ -1118,6 +1125,9 @@ class NeRVEncTrainerFullRes(BaseTrainer):
                         clip_t_compress['decode']['from_first'] += t_dec_direct
                         clip_t_compress['encode']['from_prev'] += t_enc_direct
                         clip_t_compress['decode']['from_prev'] += t_dec_direct
+                        if has_future_clip:
+                            clip_t_compress['encode']['from_first'] += t_dequant_direct
+                            clip_t_compress['encode']['from_prev'] += t_dequant_direct
 
                         # Store common quant/overhead bits for the first clip (per patch)
                         current_clip_bits_quant.append(bits_direct['quant'])
@@ -1131,7 +1141,7 @@ class NeRVEncTrainerFullRes(BaseTrainer):
                             raise RuntimeError(
                                 f"Missing state for position {pos_key}...")
 
-                        x_dict_recon_first, enc_bits_first, t_enc_p_first, t_dec_p_first = self._process_residual(
+                        x_dict_recon_first, enc_bits_first, t_enc_p_first, t_dec_p_first, _ = self._process_residual(
                             cur_x_dict, first_x_dicts_recon_per_pos[pos_key], quant_bit, quant_axis,
                             encoding_type)
                         x_dict_recon_patches['from_first'].append(
@@ -1140,13 +1150,15 @@ class NeRVEncTrainerFullRes(BaseTrainer):
                         clip_t_compress['encode']['from_first'] += t_enc_p_first
                         clip_t_compress['decode']['from_first'] += t_dec_p_first
 
-                        x_dict_recon_prev, enc_bits_prev, t_enc_p_prev, t_dec_p_prev = self._process_residual(
+                        x_dict_recon_prev, enc_bits_prev, t_enc_p_prev, t_dec_p_prev, t_dequant_add_prev = self._process_residual(
                             cur_x_dict, prev_x_dicts_recon_per_pos[pos_key], quant_bit, quant_axis,
                             encoding_type)
                         x_dict_recon_patches['from_prev'].append(
                             x_dict_recon_prev)
                         current_clip_bits_encoded_prev.append(enc_bits_prev)
                         clip_t_compress['encode']['from_prev'] += t_enc_p_prev
+                        if has_future_clip:
+                                clip_t_compress['encode']['from_prev'] += t_dequant_add_prev
                         clip_t_compress['decode']['from_prev'] += t_dec_p_prev
 
                         prev_x_dicts_recon_per_pos[pos_key] = self._clone_dict(
@@ -1183,16 +1195,12 @@ class NeRVEncTrainerFullRes(BaseTrainer):
                     t_hyponet_tile = time.time() - start_hyponet_tile
 
                     # Calculate Total Clip Times
-                    total_encode_time_clip = t_common_encode + \
-                        clip_t_compress['encode'][method]
-                    total_decode_time_clip = clip_t_compress['decode'][method] + \
-                        t_hyponet_tile
+                    total_encode_time_clip = t_common_encode + clip_t_compress['encode'][method]
+                    total_decode_time_clip = clip_t_compress['decode'][method] + t_hyponet_tile
 
                     # Calculate FPS
-                    clip_metrics[method]['enc_fps'].append(
-                        dataset.frame_num / total_encode_time_clip)
-                    clip_metrics[method]['dec_fps'].append(
-                        dataset.frame_num / total_decode_time_clip)
+                    clip_metrics[method]['enc_fps'].append(dataset.frame_num / total_encode_time_clip)
+                    clip_metrics[method]['dec_fps'].append(dataset.frame_num / total_decode_time_clip)
 
                     # Get psnr, ssim for the clip
                     clip_metrics[method] = self._compute_full_clip_metrics(
